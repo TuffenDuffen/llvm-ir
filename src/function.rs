@@ -204,6 +204,7 @@ pub enum FunctionAttribute {
     StackProtectStrong,
     StrictFP,
     UWTable,
+    MustProgress,
     StringAttribute {
         kind: String,
         value: String, // for no value, use ""
@@ -575,6 +576,8 @@ impl AttributesData {
             "sspstrong",
             "strictfp",
             "uwtable",
+            #[cfg(feature = "llvm-12-or-greater")]
+            "mustprogress"
         ]
         .iter()
         .map(|&attrname| {
@@ -709,6 +712,7 @@ impl FunctionAttribute {
                 Some("sspstrong") => Self::StackProtectStrong,
                 Some("strictfp") => Self::StrictFP,
                 Some("uwtable") => Self::UWTable,
+                Some("mustprogress") => Self::MustProgress,
                 Some(s) => panic!("Unhandled value from lookup_function_attr: {:?}", s),
                 None => {
                     debug!("unknown enum function attr {}", kind);
@@ -813,5 +817,241 @@ impl ParameterAttribute {
     #[cfg(feature = "llvm-12-or-greater")]
     fn is_type_attr(a: LLVMAttributeRef) -> bool {
         unsafe { LLVMIsTypeAttribute(a) != 0 }
+    }
+}
+
+// ******* //
+// to_llvm //
+// ******* //
+
+use crate::ToLLVM;
+
+impl ToLLVM for Function {
+    fn to_llvm(&self) -> String {
+        let name_str = &self.name;
+        let parameters_str = self
+            .parameters
+            .iter()
+            .map(|parameter| parameter.to_llvm())
+            .collect::<Vec<String>>()
+            .join(", ");
+        //TODO va_args is not yet implemented
+        let return_type_str = self.return_type.to_string();
+        let basic_blocks_str = self
+            .basic_blocks
+            .iter()
+            .map(|basic_block| basic_block.to_llvm())
+            .collect::<Vec<String>>()
+            .join("\n");
+        let function_attributes_str = self
+            .function_attributes
+            .iter()
+            .map(|attribute| attribute.to_llvm())
+            .collect::<Vec<String>>()
+            .join(" ");
+        let return_attributes_str = self
+            .return_attributes
+            .iter()
+            .map(|attribute| attribute.to_llvm())
+            .collect::<Vec<String>>()
+            .join(" ");
+        let linkage_str = self.linkage.to_llvm();
+        let visibility_str = self.visibility.to_llvm();
+        let dll_storage_class_str = self.dll_storage_class.to_llvm();
+        let calling_convention_str = self.calling_convention.to_llvm();
+        let section_str = match &self.section {
+            Some(section) => format!("section {section}"),
+            None => String::new(),
+        };
+        let comdat_str = match &self.comdat {
+            Some(comdat) => comdat.to_llvm(),
+            None => String::new(),
+        };
+        let alignment_str = self.alignment.to_string();
+        let garbage_collector_name_str = match &self.garbage_collector_name {
+            Some(name) => name.to_owned(),
+            None => String::new(),
+        };
+        #[cfg(feature = "llvm-9-or-greater")]
+        let _debugloc_str = self.visibility.to_llvm();
+
+        //TODO: add personality, find cause of mustprogress missing
+
+        format!("define {linkage_str} {visibility_str} {dll_storage_class_str} {calling_convention_str} {return_attributes_str} {return_type_str} @{name_str}({parameters_str}) {function_attributes_str} {section_str} {comdat_str} {alignment_str} {garbage_collector_name_str} {{{basic_blocks_str}}}")
+    }
+}
+
+impl ToLLVM for Parameter {
+    fn to_llvm(&self) -> String {
+        let name_str = self.name.to_string();
+        let type_str = self.ty.to_string();
+        let attributes_str = self
+            .attributes
+            .iter()
+            .map(|attribute| attribute.to_llvm())
+            .collect::<Vec<String>>()
+            .join(" ");
+
+        format!("{type_str} {attributes_str} {name_str}")
+    }
+}
+
+impl ToLLVM for FunctionAttribute {
+    fn to_llvm(&self) -> String {
+        match self { //TODO: use .to_string for strings that don't need format
+            FunctionAttribute::AlignStack(n) => format!("alignstack({})", n),
+            FunctionAttribute::AllocSize { elt_size, num_elts } => match num_elts {
+                Some(elts) => format!("allocsize({}, {})", elt_size, elts),
+                None => format!("allocsize({})", elt_size),
+            },
+            FunctionAttribute::AlwaysInline => format!("alwaysinline"),
+            FunctionAttribute::Builtin => format!("builtin"),
+            FunctionAttribute::Cold => format!("cold"),
+            FunctionAttribute::Convergent => format!("convergent"),
+            FunctionAttribute::InaccessibleMemOnly => format!("inaccessiblememonly"),
+            FunctionAttribute::InaccessibleMemOrArgMemOnly => {
+                format!("inaccessiblemem_or_argmemonly")
+            },
+            FunctionAttribute::InlineHint => format!("inlinehint"),
+            FunctionAttribute::JumpTable => format!("jumptable"),
+            FunctionAttribute::MinimizeSize => format!("minsize"),
+            FunctionAttribute::Naked => format!("naked"),
+            FunctionAttribute::NoBuiltin => format!("nobuiltin"),
+            FunctionAttribute::NoCFCheck => format!("nocf_check"),
+            FunctionAttribute::NoDuplicate => format!("noduplicate"),
+            #[cfg(feature = "llvm-9-or-greater")]
+            FunctionAttribute::NoFree => format!("nofree"),
+            FunctionAttribute::NoImplicitFloat => format!("noimplicitfloat"),
+            FunctionAttribute::NoInline => format!("noinline"),
+            #[cfg(feature = "llvm-11-or-greater")]
+            FunctionAttribute::NoMerge => format!("nomerge"),
+            FunctionAttribute::NonLazyBind => format!("nonlazybind"),
+            FunctionAttribute::NoRedZone => format!("noredzone"),
+            FunctionAttribute::NoReturn => format!("noreturn"),
+            FunctionAttribute::NoRecurse => format!("norecurse"),
+            #[cfg(feature = "llvm-9-or-greater")]
+            FunctionAttribute::WillReturn => format!("willreturn"),
+            FunctionAttribute::ReturnsTwice => format!("returns_twice"),
+            #[cfg(feature = "llvm-9-or-greater")]
+            FunctionAttribute::NoSync => format!("nosync"),
+            FunctionAttribute::NoUnwind => format!("nounwind"),
+            #[cfg(feature = "llvm-11-or-greater")]
+            FunctionAttribute::NullPointerIsValid => format!("null_pointer_is_valid"),
+            FunctionAttribute::OptForFuzzing => format!("optforfuzzing"),
+            FunctionAttribute::OptNone => format!("optnone"),
+            FunctionAttribute::OptSize => format!("optsize"),
+            FunctionAttribute::ReadNone => format!("readnone"),
+            FunctionAttribute::ReadOnly => format!("readonly"),
+            FunctionAttribute::WriteOnly => format!("writeonly"),
+            FunctionAttribute::ArgMemOnly => format!("argmemonly"),
+            FunctionAttribute::SafeStack => format!("safestack"),
+            FunctionAttribute::SanitizeAddress => format!("sanitize_address"),
+            FunctionAttribute::SanitizeMemory => format!("sanitize_memory"),
+            FunctionAttribute::SanitizeThread => format!("sanitize_thread"),
+            FunctionAttribute::SanitizeHWAddress => format!("sanitize_hwaddress"),
+            #[cfg(feature = "llvm-9-or-greater")]
+            FunctionAttribute::SanitizeMemTag => format!("sanitize_memtag"),
+            FunctionAttribute::ShadowCallStack => format!("shadowcallstack"),
+            FunctionAttribute::SpeculativeLoadHardening => format!("speculative_load_hardening"),
+            FunctionAttribute::Speculatable => format!("speculatable"),
+            FunctionAttribute::StackProtect => format!("ssp"),
+            FunctionAttribute::StackProtectReq => format!("sspreq"),
+            FunctionAttribute::StackProtectStrong => format!("sspstrong"),
+            FunctionAttribute::StrictFP => format!("strictfp"),
+            FunctionAttribute::UWTable => format!("uwtable"),
+            FunctionAttribute::MustProgress => "mustprogress".to_string(), 
+            FunctionAttribute::StringAttribute { kind, value } => format!("\"{}\"=\"{}\"", kind, value),
+            FunctionAttribute::UnknownAttribute => panic!("Cannot write unknown attributes"),
+        }
+    }
+}
+
+impl ToLLVM for ParameterAttribute {
+    fn to_llvm(&self) -> String {
+        match self {
+            ParameterAttribute::ZeroExt => format!("zeroext"),
+            ParameterAttribute::SignExt => format!("signext"),
+            ParameterAttribute::InReg => format!("inreg"),
+            ParameterAttribute::ByVal(ty) => format!("byval({})", ty),
+            #[cfg(feature = "llvm-11-or-greater")]
+            ParameterAttribute::Preallocated(ty) => format!("preallocated({})", ty),
+            ParameterAttribute::InAlloca(ty) => format!("inalloca({})", ty),
+            ParameterAttribute::SRet(ty) => format!("sret({})", ty),
+            ParameterAttribute::Alignment(n) => format!("align({})", n),
+            ParameterAttribute::NoAlias => format!("noalias"),
+            ParameterAttribute::NoCapture => format!("nocapture"),
+            #[cfg(feature = "llvm-9-or-greater")]
+            ParameterAttribute::NoFree => format!("nofree"),
+            ParameterAttribute::Nest => format!("nest"),
+            ParameterAttribute::Returned => format!("returned"),
+            ParameterAttribute::NonNull => format!("nonnull"),
+            ParameterAttribute::Dereferenceable(n) => format!("dereferenceable({})", n),
+            ParameterAttribute::DereferenceableOrNull(n) => {
+                format!("dereferenceable_or_null({})", n)
+            },
+            ParameterAttribute::SwiftSelf => format!("swiftself"),
+            ParameterAttribute::SwiftError => format!("swifterror"),
+            #[cfg(feature = "llvm-9-or-greater")]
+            ParameterAttribute::ImmArg => format!("immarg"),
+            #[cfg(feature = "llvm-11-or-greater")]
+            ParameterAttribute::NoUndef => format!("noundef"),
+            ParameterAttribute::StringAttribute { kind, value } => format!("{}={}", kind, value),
+            ParameterAttribute::UnknownAttribute => panic!("Cannot write unknown attributes"),
+            ParameterAttribute::UnknownTypeAttribute(ty) => format!("{}", ty),
+        }
+    }
+}
+
+impl ToLLVM for CallingConvention {
+    fn to_llvm(&self) -> String {
+        match self {
+            CallingConvention::C => "ccc".to_string(),
+            CallingConvention::Fast => "fastcc".to_string(),
+            CallingConvention::Cold => "coldcc".to_string(),
+            CallingConvention::GHC => "cc 10".to_string(),
+            CallingConvention::HiPE => "cc 11".to_string(),
+            CallingConvention::WebKit_JS => "webkit_jscc".to_string(),
+            CallingConvention::AnyReg => "anyregcc".to_string(),
+            CallingConvention::PreserveMost => "preserve_mostcc".to_string(),
+            CallingConvention::PreserveAll => "preserve_allcc".to_string(),
+            CallingConvention::Swift => "swiftcc".to_string(),
+            CallingConvention::CXX_FastTLS => "cxx_fast_tlscc".to_string(),
+            CallingConvention::X86_StdCall => "x86_stdcallcc".to_string(),
+            CallingConvention::X86_FastCall => "x86_fastcallcc".to_string(),
+            CallingConvention::X86_RegCall => "x86_regcallcc".to_string(),
+            CallingConvention::X86_ThisCall => "x86_thiscallcc".to_string(),
+            CallingConvention::X86_VectorCall => "x86_vectorcallcc".to_string(),
+            CallingConvention::X86_Intr => "x86_intrcc".to_string(),
+            CallingConvention::X86_64_SysV => "x86_64_sysvcc".to_string(),
+            CallingConvention::ARM_APCS => "arm_apcscc".to_string(),
+            CallingConvention::ARM_AAPCS => "arm_aapcscc".to_string(),
+            CallingConvention::ARM_AAPCS_VFP => "arm_aapcs_vfpcc".to_string(),
+            CallingConvention::MSP430_INTR => "msp430_intrcc".to_string(),
+            CallingConvention::MSP430_Builtin => {
+                panic!("LLVM does not support parsing the MSP430_builtin calling convention")
+            },
+            CallingConvention::PTX_Kernel => "ptx_kernel".to_string(),
+            CallingConvention::PTX_Device => "ptx_device".to_string(),
+            CallingConvention::SPIR_FUNC => "spir_func".to_string(),
+            CallingConvention::SPIR_KERNEL => "spir_kernel".to_string(),
+            CallingConvention::Intel_OCL_BI => "intel_ocl_bicc".to_string(),
+            CallingConvention::Win64 => "win64cc".to_string(),
+            CallingConvention::HHVM => "hhvmcc".to_string(),
+            CallingConvention::HHVM_C => "hhvm_ccc".to_string(),
+            CallingConvention::AVR_Intr => "hhvm_ccc".to_string(),
+            CallingConvention::AVR_Signal => "avr_signalcc".to_string(),
+            CallingConvention::AVR_Builtin => {
+                panic!("LLVM does not support parsing the AVR_builtin calling convention")
+            },
+            CallingConvention::AMDGPU_CS => "amdgpu_cs".to_string(),
+            CallingConvention::AMDGPU_ES => "amdgpu_es".to_string(),
+            CallingConvention::AMDGPU_GS => "amdgpu_gs".to_string(),
+            CallingConvention::AMDGPU_HS => "amdgpu_hs".to_string(),
+            CallingConvention::AMDGPU_LS => "amdgpu_ls".to_string(),
+            CallingConvention::AMDGPU_PS => "amdgpu_ps".to_string(),
+            CallingConvention::AMDGPU_VS => "amdgpu_vs".to_string(),
+            CallingConvention::AMDGPU_Kernel => "amdgpu_kernel".to_string(),
+            CallingConvention::Numbered(n) => format!("cc {n}"),
+        }
     }
 }

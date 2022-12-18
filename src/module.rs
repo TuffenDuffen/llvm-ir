@@ -524,11 +524,7 @@ use crate::from_llvm::*;
 use crate::function::AttributesData;
 use llvm_sys::comdat::*;
 use llvm_sys::{
-    LLVMDLLStorageClass,
-    LLVMLinkage,
-    LLVMThreadLocalMode,
-    LLVMUnnamedAddr,
-    LLVMVisibility,
+    LLVMDLLStorageClass, LLVMLinkage, LLVMThreadLocalMode, LLVMUnnamedAddr, LLVMVisibility,
 };
 
 /// This struct contains data used when translating llvm-sys objects into our
@@ -832,7 +828,7 @@ impl DataLayout {
                 let addr_space: AddrSpace = if first_chunk == "p" {
                     0
                 } else {
-                    first_chunk[1 ..]
+                    first_chunk[1..]
                         .parse()
                         .expect("datalayout 'p': Failed to parse address space")
                 };
@@ -874,7 +870,7 @@ impl DataLayout {
             } else if spec.starts_with('i') {
                 let mut chunks = spec.split(':');
                 let first_chunk = chunks.next().unwrap();
-                let size: u32 = first_chunk[1 ..]
+                let size: u32 = first_chunk[1..]
                     .parse()
                     .expect("datalayout 'i': Failed to parse size");
                 let second_chunk = chunks
@@ -898,7 +894,7 @@ impl DataLayout {
             } else if spec.starts_with('v') {
                 let mut chunks = spec.split(':');
                 let first_chunk = chunks.next().unwrap();
-                let size: u32 = first_chunk[1 ..]
+                let size: u32 = first_chunk[1..]
                     .parse()
                     .expect("datalayout 'v': Failed to parse size");
                 let second_chunk = chunks
@@ -922,7 +918,7 @@ impl DataLayout {
             } else if spec.starts_with('f') {
                 let mut chunks = spec.split(':');
                 let first_chunk = chunks.next().unwrap();
-                let size: u32 = first_chunk[1 ..]
+                let size: u32 = first_chunk[1..]
                     .parse()
                     .expect("datalayout 'f': Failed to parse size");
                 let second_chunk = chunks
@@ -1032,7 +1028,7 @@ impl DataLayout {
                     .get_or_insert_with(HashSet::new);
                 let mut chunks = spec.split(':');
                 let first_chunk = chunks.next().unwrap();
-                let size = first_chunk[1 ..]
+                let size = first_chunk[1..]
                     .parse()
                     .expect("datalayout 'n': Failed to parse first size");
                 native_int_widths.insert(size);
@@ -1117,6 +1113,76 @@ impl Default for Alignments {
             )]
             .into_iter()
             .collect(),
+        }
+    }
+}
+
+// ******* //
+// to_llvm //
+// ******* //
+
+use crate::ToLLVM;
+
+impl ToLLVM for Linkage {
+    fn to_llvm(&self) -> String {
+        match self {
+            Linkage::Private => "private".to_string(),
+            Linkage::Internal => "internal".to_string(),
+            Linkage::External => "external".to_string(),
+            Linkage::ExternalWeak => "extern_weak".to_string(),
+            Linkage::AvailableExternally => "available_externally".to_string(),
+            Linkage::LinkOnceAny => "linkonce".to_string(),
+            Linkage::LinkOnceODR => "linkonce_odr".to_string(),
+            Linkage::LinkOnceODRAutoHide => panic!("Linkage type LinkOnceODRAutoHide is not mentioned in the LLVM language specification, and thus can not be implemented"),
+            Linkage::WeakAny => "weak".to_string(),
+            Linkage::WeakODR => "weak_odr".to_string(),
+            Linkage::Common => "common".to_string(),
+            Linkage::Appending => "appending".to_string(),
+            Linkage::DLLImport => "dllimport".to_string(),
+            Linkage::DLLExport => "dllexport".to_string(),
+            Linkage::Ghost => panic!("Linkage type Ghost is not mentioned in the LLVM language specification, and thus can not be implemented"),
+            Linkage::LinkerPrivate => panic!("Linkage type LinkerPrivate is not mentioned in the LLVM language specification, and thus can not be implemented"),
+            Linkage::LinkerPrivateWeak => panic!("Linkage type LinkerPrivateWeak is not mentioned in the LLVM language specification, and thus can not be implemented"),
+        }
+    }
+}
+
+impl ToLLVM for Visibility {
+    fn to_llvm(&self) -> String {
+        match self {
+            Visibility::Default => "default".to_string(),
+            Visibility::Hidden => "hidden".to_string(),
+            Visibility::Protected => "protected".to_string(),
+        }
+    }
+}
+
+impl ToLLVM for DLLStorageClass {
+    fn to_llvm(&self) -> String {
+        match self {
+            DLLStorageClass::Default => String::new(),
+            DLLStorageClass::Import => "dllimport".to_string(),
+            DLLStorageClass::Export => "dllexport".to_string(),
+        }
+    }
+}
+
+impl ToLLVM for Comdat {
+    fn to_llvm(&self) -> String {
+        //TODO: implement name support for comdat
+        let selection_str = self.selection_kind.to_llvm();
+        format!("comdat {selection_str}")
+    }
+}
+
+impl ToLLVM for SelectionKind {
+    fn to_llvm(&self) -> String {
+        match self {
+            SelectionKind::Any => "any".to_string(),
+            SelectionKind::ExactMatch => "exactmatch".to_string(),
+            SelectionKind::Largest => "largest".to_string(),
+            SelectionKind::NoDuplicates => "nodeduplicate".to_string(), // NoDuplicates is actually nodeduplicate, the enum name in llvm_sys is weird
+            SelectionKind::SameSize => "samesize".to_string(),
         }
     }
 }

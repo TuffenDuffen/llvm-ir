@@ -121,3 +121,24 @@ fn term_needs_name(term: LLVMValueRef) -> bool {
         _ => false, // all other terminators have no result (destination) and thus don't need names
     }
 }
+
+// ******* //
+// to_llvm //
+// ******* //
+
+use crate::ToLLVM;
+
+impl ToLLVM for BasicBlock {
+    fn to_llvm(&self) -> String {
+        let name_str = self.name.to_string();
+        let instrs_str = self
+        .instrs
+        .iter()
+        .map(|instr| instr.to_string())
+        .collect::<Vec<String>>()
+        .join(", ");
+        let term_str = self.term.to_string();
+
+        format!("{name_str}\n{instrs_str}{term_str}\n")
+    }
+}

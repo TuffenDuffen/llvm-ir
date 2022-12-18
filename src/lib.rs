@@ -35,6 +35,8 @@ pub mod predicates;
 pub use predicates::{FPPredicate, IntPredicate};
 pub mod terminator;
 pub use terminator::Terminator;
+pub mod to_llvm;
+pub use to_llvm::ToLLVM;
 pub mod types;
 pub use types::{Type, TypeRef};
 
