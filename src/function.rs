@@ -872,12 +872,11 @@ impl ToLLVM for Function {
             Some(name) => name.to_owned(),
             None => String::new(),
         };
-        #[cfg(feature = "llvm-9-or-greater")]
-        let _debugloc_str = self.visibility.to_llvm();
+        // Don't know where debugloc is put in string
 
         //TODO: add personality, find cause of mustprogress missing
 
-        format!("define {linkage_str} {visibility_str} {dll_storage_class_str} {calling_convention_str} {return_attributes_str} {return_type_str} @{name_str}({parameters_str}) {function_attributes_str} {section_str} {comdat_str} {alignment_str} {garbage_collector_name_str} {{{basic_blocks_str}}}")
+        format!("define {linkage_str} {visibility_str} {dll_storage_class_str} {calling_convention_str} {return_attributes_str} {return_type_str} @{name_str}({parameters_str}) {function_attributes_str} {section_str} {comdat_str} {alignment_str} {garbage_collector_name_str} {{\n{basic_blocks_str}}}")
     }
 }
 

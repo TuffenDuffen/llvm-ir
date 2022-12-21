@@ -2,9 +2,9 @@ use crate::constant::ConstantRef;
 #[cfg(feature = "llvm-9-or-greater")]
 use crate::debugloc::*;
 use crate::function::{Function, FunctionAttribute, GroupID};
-use crate::llvm_sys::*;
 use crate::name::Name;
 use crate::types::{FPType, Type, TypeRef, Typed, Types, TypesBuilder};
+use crate::{llvm_sys::*, to_llvm};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::ptr::null_mut;
@@ -1123,6 +1123,96 @@ impl Default for Alignments {
 
 use crate::ToLLVM;
 
+impl ToLLVM for Module {
+    fn to_llvm(&self) -> String {
+        let name = self.name.clone();
+        let source_file_name = self.source_file_name.clone();
+        let data_layout = self.data_layout.layout_str.clone();
+        let target_triple = match &self.target_triple {
+            Some(target_triple) => target_triple.to_owned(),
+            None => String::new(),
+        };
+        let functions = self
+            .functions
+            .iter()
+            .map(|function| function.to_llvm())
+            .collect::<Vec<String>>()
+            .join("\n");
+        let global_vars = self
+            .global_vars
+            .iter()
+            .map(|global_var| global_var.to_llvm())
+            .collect::<Vec<String>>()
+            .join("\n");
+        let global_aliases = self
+            .global_aliases
+            .iter()
+            .map(|global_alias| global_alias.to_llvm())
+            .collect::<Vec<String>>()
+            .join("\n");
+        let inline_assembly = format!("module asm \"{}\"",self.inline_assembly.clone());
+        // We don't need to know what types we have used when writing the module
+        format!("; ModuleID = '{name}'\nsource_filename = \"{source_file_name}\"\ntarget datalayout = \"{data_layout}\"\ntarget triple = \"{target_triple}\"\n\n{global_vars}\n\n{global_aliases}\n\n{functions}\n\n{inline_assembly}")
+    }
+}
+
+impl ToLLVM for GlobalVariable {
+    fn to_llvm(&self) -> String {
+        let name = self.name.to_string();
+        let linkage = self.linkage.to_llvm();
+        let visibility = self.visibility.to_llvm();
+        let constant_or_global = if self.is_constant {
+            "constant".to_string()
+        } else {
+            "global".to_string()
+        };
+        let ty = self.ty.to_string();
+        let addr_space = self.addr_space.to_string();
+        let dll_storage_class = self.dll_storage_class.to_llvm();
+        let thread_local_mode = self.thread_local_mode.to_llvm();
+        let unnamed_addr = match self.unnamed_addr {
+            Some(unnamed_addr) => unnamed_addr.to_llvm(),
+            None => String::new(),
+        };
+        let initializer = match &self.initializer {
+            Some(initializer) => initializer.to_string(),
+            None => todo!(),
+        };
+        let section = match &self.section {
+            Some(section) => format!(", section {section}"),
+            None => String::new(),
+        };
+        let comdat = match &self.comdat {
+            Some(comdat) => format!(", comdat {}", comdat.to_llvm()),
+            None => String::new(),
+        };
+        let alignment = format!(", align {}", self.alignment.to_string());
+        // Don't know where debugloc is put in string
+        format!(
+            "@{name} = {linkage} {visibility} {dll_storage_class} {thread_local_mode} {unnamed_addr} {addr_space} {constant_or_global} {ty} {initializer} {section} {comdat} {alignment}"
+        )
+    }
+}
+
+impl ToLLVM for GlobalAlias {
+    fn to_llvm(&self) -> String {
+        let name = self.name.to_string();
+        let aliasee = self.aliasee.to_string();
+        let linkage = self.linkage.to_llvm();
+        let visibility = self.visibility.to_llvm();
+        let ty = self.ty.to_string();
+        // addr_space is never referenced in LLVM langref
+        let dll_storage_class = self.dll_storage_class.to_llvm();
+        let thread_local_mode = self.thread_local_mode.to_llvm();
+        let unnamed_addr = match self.unnamed_addr {
+            Some(unnamed_addr) => unnamed_addr.to_llvm(),
+            None => String::new(),
+        };
+
+        format!("@{name} = {linkage} {visibility} {dll_storage_class} {thread_local_mode} {unnamed_addr} alias {ty}, {ty}* @{aliasee}")
+    }
+}
+
 impl ToLLVM for Linkage {
     fn to_llvm(&self) -> String {
         match self {
@@ -1183,6 +1273,27 @@ impl ToLLVM for SelectionKind {
             SelectionKind::Largest => "largest".to_string(),
             SelectionKind::NoDuplicates => "nodeduplicate".to_string(), // NoDuplicates is actually nodeduplicate, the enum name in llvm_sys is weird
             SelectionKind::SameSize => "samesize".to_string(),
+        }
+    }
+}
+
+impl ToLLVM for ThreadLocalMode {
+    fn to_llvm(&self) -> String {
+        match self {
+            ThreadLocalMode::NotThreadLocal => String::new(),
+            ThreadLocalMode::GeneralDynamic => "thread_local()".to_string(),
+            ThreadLocalMode::LocalDynamic => "thread_local(localdynamic)".to_string(),
+            ThreadLocalMode::InitialExec => "thread_local(initialexec)".to_string(),
+            ThreadLocalMode::LocalExec => "thread_local(localexec)".to_string(),
+        }
+    }
+}
+
+impl ToLLVM for UnnamedAddr {
+    fn to_llvm(&self) -> String {
+        match self {
+            UnnamedAddr::Local => "local_unnamed_addr".to_string(),
+            UnnamedAddr::Global => "unnamed_addr".to_string(),
         }
     }
 }

@@ -136,9 +136,9 @@ impl ToLLVM for BasicBlock {
         .iter()
         .map(|instr| instr.to_string())
         .collect::<Vec<String>>()
-        .join(", ");
+        .join("\n");
         let term_str = self.term.to_string();
 
-        format!("{name_str}\n{instrs_str}{term_str}\n")
+        format!("{name_str}:\n{instrs_str}\n{term_str}\n")
     }
 }
